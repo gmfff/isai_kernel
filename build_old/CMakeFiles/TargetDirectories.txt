@@ -1,0 +1,3 @@
+/home/guomingfeng/ilu_ISAI/build/CMakeFiles/tri_solve_tensor.dir
+/home/guomingfeng/ilu_ISAI/build/CMakeFiles/edit_cache.dir
+/home/guomingfeng/ilu_ISAI/build/CMakeFiles/rebuild_cache.dir

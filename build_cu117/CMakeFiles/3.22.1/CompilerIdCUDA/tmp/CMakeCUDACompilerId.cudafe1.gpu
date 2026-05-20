@@ -1,0 +1,491 @@
+typedef char __nv_bool;
+# 533 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/bits/cpp_type_traits.h" 3
+struct _ZSt24__is_memcmp_ordered_withISt4byteS0_Lb1EE;
+# 80 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/bits/stl_pair.h" 3
+struct _ZSt21piecewise_construct_t;
+# 167 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+enum _ZSt17float_round_style {
+# 169 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt19round_indeterminate = (-1),
+# 170 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt17round_toward_zero,
+# 171 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt16round_to_nearest,
+# 172 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt21round_toward_infinity,
+# 173 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt25round_toward_neg_infinity};
+# 182 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+enum _ZSt18float_denorm_style {
+# 185 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt20denorm_indeterminate = (-1),
+# 187 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt13denorm_absent,
+# 189 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+_ZSt14denorm_present};
+# 202 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt21__numeric_limits_base;
+# 384 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIbE;
+# 453 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIcE;
+# 520 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIaE;
+# 590 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIhE;
+# 663 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIwE;
+# 797 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIDsE;
+# 858 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIDiE;
+# 920 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIsE;
+# 987 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsItE;
+# 1060 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIiE;
+# 1127 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIjE;
+# 1199 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIlE;
+# 1266 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsImE;
+# 1339 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIxE;
+# 1409 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIyE;
+# 1635 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsInE;
+# 1635 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIoE;
+# 1668 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIfE;
+# 1743 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIdE;
+# 1818 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIeE;
+# 209 "/home/guomingfeng/miniconda3/envs/magma_env/lib/gcc/x86_64-conda-linux-gnu/11.2.0/include/stddef.h" 3
+typedef unsigned long size_t;
+#include "crt/device_runtime.h"
+# 280 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/x86_64-conda-linux-gnu/bits/c++config.h" 3
+typedef unsigned long _ZSt6size_t;
+# 533 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/bits/cpp_type_traits.h" 3
+struct _ZSt24__is_memcmp_ordered_withISt4byteS0_Lb1EE {};
+# 80 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/bits/stl_pair.h" 3
+struct _ZSt21piecewise_construct_t {};
+# 202 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt21__numeric_limits_base {};
+# 384 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIbE {};
+# 453 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIcE {};
+# 520 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIaE {};
+# 590 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIhE {};
+# 663 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIwE {};
+# 797 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIDsE {};
+# 858 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIDiE {};
+# 920 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIsE {};
+# 987 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsItE {};
+# 1060 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIiE {};
+# 1127 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIjE {};
+# 1199 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIlE {};
+# 1266 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsImE {};
+# 1339 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIxE {};
+# 1409 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIyE {};
+# 1635 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsInE {};
+# 1635 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIoE {};
+# 1668 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIfE {};
+# 1743 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIdE {};
+# 1818 "/home/guomingfeng/miniconda3/envs/magma_env/x86_64-conda-linux-gnu/include/c++/11.2.0/limits" 3
+struct _ZSt14numeric_limitsIeE {};
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#include "common_functions.h"
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
+#if !defined(__CUDABE__)
+#endif
