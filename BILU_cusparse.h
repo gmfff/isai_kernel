@@ -220,7 +220,7 @@ int BILU_cuSPARSE(const int           *bsrRowPtr_A,
 
 
     double time_cuda_SV = ((t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0)/1000;
-    printf("cuSPARSE block ILU SV time: %f\n", time_cuda_SV);
+    printf("cuSPARSE block SpTRSV time: %f\n", time_cuda_SV);
 
     // Copy results back
     cudaMemcpy(x, d_y, m * sizeof(VALUE_TYPE), cudaMemcpyDeviceToHost);

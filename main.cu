@@ -16,6 +16,7 @@
 #include <vector>
 #include <iostream>
 #include <typeinfo>
+#include <algorithm>
 #include <thrust/execution_policy.h>
 #include <thrust/scan.h>
 #include "analyze_pair.h"
@@ -53,9 +54,10 @@ int main(int argc, char** argv) {
     // =========================================================
     // 0. Event
     // =========================================================
-    cudaEvent_t start1, stop1, start2, stop2, start3, stop3, start5, stop5;
+    cudaEvent_t start1, stop1, start2, stop2, start3, stop3, start5, stop5, start6, stop6;
     float time_lower = 0.0f;
     float time_lower_tensor = 0.0f;
+    float time_lower_globalY_tensor = 0.0f;
     float time_upper = 0.0f;
     float time_spmv_lower = 0.0f;
 
@@ -67,6 +69,8 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaEventCreate(&stop3));
     CHECK_CUDA(cudaEventCreate(&start5));
     CHECK_CUDA(cudaEventCreate(&stop5));
+    CHECK_CUDA(cudaEventCreate(&start6));
+    CHECK_CUDA(cudaEventCreate(&stop6));
 
     // =========================================================
     // 1. 读 mtx -> CSR
@@ -298,7 +302,8 @@ int main(int argc, char** argv) {
     }
     std::cout << "Nmax = " << Nmax << "\n";
 
-    analyze_pair_lengths(nb, h_MbrowL, h_PairPtr);
+    //analyze L nnz map
+    /*analyze_pair_lengths(nb, h_MbrowL, h_PairPtr);
     analyze_column_q_distribution(nb, h_MbrowL, h_PairPtr, 30);
     analyze_column_q_bins(nb, h_MbrowL, h_PairPtr, 10);
     analyze_last_columns(
@@ -306,7 +311,7 @@ int main(int argc, char** argv) {
         h_MbrowL,
         h_PairPtr,
         50   // 看最后50列
-    );
+    );*/
 
     int max_shared_memory = 0;
     CHECK_CUDA(cudaDeviceGetAttribute(&max_shared_memory,
@@ -340,6 +345,13 @@ int main(int argc, char** argv) {
     int Nmax_perwarp = Nmax;
     size_t shmem_bytes =
         warpsPerBlock * ((2 * BS2) + Nmax_perwarp * BS2) * sizeof(VALUE_TYPE);
+    size_t shmem_tensor_bytes = shmem_bytes;
+
+    int warpsPerBlockGlobalY = 4;
+    dim3 blockGlobalY(32 * warpsPerBlockGlobalY);
+    dim3 gridGlobalY((nb + warpsPerBlockGlobalY - 1) / warpsPerBlockGlobalY);
+    size_t shmemGlobalY =
+        (size_t)warpsPerBlockGlobalY * (2 * BS2) * sizeof(VALUE_TYPE);
 
     // =========================================================
     // 9. ISAI(L) normal
@@ -374,19 +386,20 @@ int main(int argc, char** argv) {
     // 10. ISAI(L) tensor
     // =========================================================
     for (int i = 0; i < 100; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_bytes>>>(
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_tensor_bytes>>>(
             nb,
             d_Abrow, d_Abcol, d_Abval,
             d_MbrowL, d_McolL,
             d_PairPtr, d_PairPLocal, d_PairSrc,
             d_MvalL, d_DinvL,
             Nmax_perwarp);
+        CHECK_CUDA(cudaGetLastError());
     }
     CHECK_CUDA(cudaDeviceSynchronize());
 
     CHECK_CUDA(cudaEventRecord(start5, 0));
     for (int i = 0; i < 1000; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_bytes>>>(
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_tensor_bytes>>>(
             nb,
             d_Abrow, d_Abcol, d_Abval,
             d_MbrowL, d_McolL,
@@ -397,6 +410,36 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaEventRecord(stop5, 0));
     CHECK_CUDA(cudaEventSynchronize(stop5));
     CHECK_CUDA(cudaEventElapsedTime(&time_lower_tensor, start5, stop5));
+    CHECK_CUDA(cudaGetLastError());
+
+    // =========================================================
+    // 10b. ISAI(L) tensor without shared Y cache
+    // =========================================================
+    for (int i = 0; i < 100; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb,
+                d_Abrow, d_Abcol, d_Abval,
+                d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc,
+                d_MvalL, d_DinvL);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start6, 0));
+    for (int i = 0; i < 1000; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb,
+                d_Abrow, d_Abcol, d_Abval,
+                d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc,
+                d_MvalL, d_DinvL);
+    }
+    CHECK_CUDA(cudaEventRecord(stop6, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop6));
+    CHECK_CUDA(cudaEventElapsedTime(&time_lower_globalY_tensor, start6, stop6));
     CHECK_CUDA(cudaGetLastError());
 
     // =========================================================
@@ -435,6 +478,8 @@ int main(int argc, char** argv) {
 
     std::cout << "ISAI(L) kernel avg time: " << time_lower / 1000.0f << " ms\n";
     std::cout << "ISAI(L) tensor avg time: " << time_lower_tensor / 1000.0f << " ms\n";
+    std::cout << "ISAI(L) tensor globalY avg time: "
+              << time_lower_globalY_tensor / 1000.0f << " ms\n";
     std::cout << "ISAI(U) kernel avg time: " << time_upper / 1000.0f << " ms\n";
 
     // =========================================================
@@ -642,6 +687,8 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaEventDestroy(stop3));
     CHECK_CUDA(cudaEventDestroy(start5));
     CHECK_CUDA(cudaEventDestroy(stop5));
+    CHECK_CUDA(cudaEventDestroy(start6));
+    CHECK_CUDA(cudaEventDestroy(stop6));
 
     CHECK_CUDA(cudaDeviceReset());
     return 0;

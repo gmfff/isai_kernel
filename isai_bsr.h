@@ -2506,6 +2506,12 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY(
     for (int idx = 0; idx < N; ++idx) {
         int t = Mcol[start + idx];
 
+        // 用 Pair 列表累减：rhs -= sum A(t,p)*Yp
+        int g0   = start + idx;
+        int qbeg = PairPtr[g0];
+        int qend = PairPtr[g0 + 1];
+        VALUE_TYPE* Ycur = sYall + idx * BS2;
+
         // rhs = (t==j ? I : 0)
         if (lane < BS2) {
             int r = lane / BS;
@@ -2513,11 +2519,6 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY(
             sRhs[lane] = (t == j && r == c) ? (VALUE_TYPE)1 : (VALUE_TYPE)0;
         }
         __syncwarp();
-
-        // 用 Pair 列表累减：rhs -= sum A(t,p)*Yp
-        int g0   = start + idx;
-        int qbeg = PairPtr[g0];
-        int qend = PairPtr[g0 + 1];
 
         for (int q = qbeg; q < qend; ++q) {
             int p_local = PairPLocal[q];  // 0..idx-1
@@ -2718,6 +2719,27 @@ void add_tail_Dinv_rhs_k4_outer_product(
         Y[rr * 5 + cc] += inv[rr * 5 + 4] * rhs[4 * 5 + cc];
     }
 }
+
+__device__ __forceinline__
+double load_double_cs_bsr5(const double* p)
+{
+    double v;
+#if defined(__CUDA_ARCH__)
+    asm volatile("ld.global.cs.f64 %0, [%1];" : "=d"(v) : "l"(p));
+#else
+    v = *p;
+#endif
+    return v;
+}
+
+__device__ __forceinline__
+double load_fragA_from_global_A_5x5_first4cols(const double* Ablk, int lane)
+{
+    int row = lane >> 2;
+    int col = lane & 3;
+    return (row < 5) ? load_double_cs_bsr5(Ablk + row * 5 + col) : 0.0;
+}
+
 // 做：sRhs -= A_use(5x4) * Yp_use(4x5)
 // 注意：必须整 warp 调用
 __device__ __forceinline__
@@ -2743,6 +2765,28 @@ void tc_update_rhs_5x5_k4(double* sRhs, const double* sA, const double* Yp)
 }
 
 __device__ __forceinline__
+void tc_update_rhs_5x5_k4_Aglobal_Yshared(
+    double* sRhs,
+    const double* Ablk,
+    const double* Yp)
+{
+#if __CUDA_ARCH__ >= 800
+    int lane = threadIdx.x & 31;
+
+    double fragA = load_fragA_from_global_A_5x5_first4cols(Ablk, lane);
+    double fragB = load_fragB_from_Yp_5x5_first4rows(Yp, lane);
+    double acc[2];
+
+    load_acc_from_sRhs_5x5(sRhs, lane, acc);
+    fragA = -fragA;
+
+    mma_m8n8k4_f64(acc, fragA, fragB);
+
+    store_acc_to_sRhs_5x5(sRhs, lane, acc);
+#endif
+}
+
+__device__ __forceinline__
 void add_tail_k4_outer_product(double* sRhs, const double* sA, const double* Yp)
 {
     int lane = threadIdx.x & 31;
@@ -2754,6 +2798,22 @@ void add_tail_k4_outer_product(double* sRhs, const double* sA, const double* Yp)
         //double a = sA[rr * 5 + 4];   // A 的第 5 列
         //double b = Yp[4 * 5 + cc];   // B 的第 5 行
         sRhs[rr * 5 + cc] -= sA[rr * 5 + 4] * Yp[4 * 5 + cc];
+    }
+}
+
+__device__ __forceinline__
+void add_tail_k4_outer_product_Aglobal_Yshared(
+    double* sRhs,
+    const double* Ablk,
+    const double* Yp)
+{
+    int lane = threadIdx.x & 31;
+
+    if (lane < 25) {
+        int rr = lane / 5;
+        int cc = lane % 5;
+        double a = load_double_cs_bsr5(Ablk + rr * 5 + 4);
+        sRhs[rr * 5 + cc] -= a * Yp[4 * 5 + cc];
     }
 }
 
@@ -2790,11 +2850,11 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor(
     // shared per-warp:
     //  sRhs(25) + sA(25) + Ycache(Nmax*25)
     extern __shared__ VALUE_TYPE sh[];
-    VALUE_TYPE* warp_base = sh + warp * ( (2*BS2) + Nmax_perwarp*BS2 );
+    VALUE_TYPE* warp_base = sh + warp * ((2 * BS2) + Nmax_perwarp * BS2);
 
     VALUE_TYPE* sRhs   = warp_base + 0;
     VALUE_TYPE* sA     = warp_base + BS2;
-    VALUE_TYPE* sYall  = warp_base + 2*BS2;                 // [Nmax][25]
+    VALUE_TYPE* sYall  = warp_base + 2 * BS2;                 // [Nmax][25]
 
     // 可选：把缓存区清零（不是必须；我们会覆盖写每个 idx 的 25 元素）
     // if (lane < Nmax_perwarp*BS2) sYall[lane] = 0;
@@ -2802,6 +2862,12 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor(
 
     for (int idx = 0; idx < N; ++idx) {
         int t = Mcol[start + idx];
+
+        // 用 Pair 列表累减：rhs -= sum A(t,p)*Yp
+        int g0   = start + idx;
+        int qbeg = PairPtr[g0];
+        int qend = PairPtr[g0 + 1];
+        VALUE_TYPE* Ycur = sYall + idx * BS2;
 
         // rhs = (t==j ? I : 0)
         if (lane < BS2) {
@@ -2811,20 +2877,13 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor(
         }
         __syncwarp();
 
-        // 用 Pair 列表累减：rhs -= sum A(t,p)*Yp
-        int g0   = start + idx;
-        int qbeg = PairPtr[g0];
-        int qend = PairPtr[g0 + 1];
-
         for (int q = qbeg; q < qend; ++q) {
             int p_local = PairPLocal[q];  // 0..idx-1
             int srcA    = PairSrc[q];
 
-            // 读 A(t,p) -> sA
             if (lane < BS2) {
                 sA[lane] = Abval[srcA * BS2 + lane];
             }
-            // 读 Yp：从 shared 缓存读，不再从 global 读
             {
                 const VALUE_TYPE* Yp = sYall + p_local * BS2;
 
@@ -2853,7 +2912,6 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor(
 
           {
             const VALUE_TYPE* inv  = DinvL + t * BS2;
-            VALUE_TYPE*       Ycur = sYall + idx * BS2;
 
         #if __CUDA_ARCH__ >= 800
             tc_gemm_Dinv_rhs_5x5_k4_store(
@@ -2887,13 +2945,438 @@ __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor(
         __syncwarp();
     }
 
-    // 最后一次性把本列所有块写回 global（减少 global 往返）
     for (int idx = 0; idx < N; ++idx) {
         if (lane < BS2) {
             Mval[(start + idx) * BS2 + lane] = sYall[idx * BS2 + lane];
         }
         __syncwarp();
     }
+}
+
+__device__ __forceinline__
+void isai_lower_bsr5_light_globalY_tensor_col_body(
+    int j,
+    int nb,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL,
+    VALUE_TYPE* sh,
+    int warp)
+{
+    int lane = threadIdx.x & 31;
+    if (j >= nb) return;
+
+    int start = Mbrow[j];
+    int end   = Mbrow[j + 1];
+    int N     = end - start;
+    if (N <= 0) return;
+
+    VALUE_TYPE* warp_base = sh + warp * (2 * BS2);
+    VALUE_TYPE* sRhs = warp_base + 0;
+    VALUE_TYPE* sA   = warp_base + BS2;
+
+    for (int idx = 0; idx < N; ++idx) {
+        int t = Mcol[start + idx];
+
+        if (lane < BS2) {
+            int r = lane / BS;
+            int c = lane - r * BS;
+            sRhs[lane] = (t == j && r == c) ? (VALUE_TYPE)1 : (VALUE_TYPE)0;
+        }
+        __syncwarp();
+
+        int g0   = start + idx;
+        int qbeg = PairPtr[g0];
+        int qend = PairPtr[g0 + 1];
+
+        for (int q = qbeg; q < qend; ++q) {
+            int p_local = PairPLocal[q];
+            int srcA    = PairSrc[q];
+
+            if (lane < BS2) {
+                sA[lane] = Abval[srcA * BS2 + lane];
+            }
+            __syncwarp();
+
+            const VALUE_TYPE* Yp = Mval + (start + p_local) * BS2;
+
+#if __CUDA_ARCH__ >= 800
+            tc_update_rhs_5x5_k4((double*)sRhs, (const double*)sA, (const double*)Yp);
+            add_tail_k4_outer_product(sRhs, sA, Yp);
+#else
+            if (lane < BS2) {
+                int rr = lane / BS;
+                int cc = lane - rr * BS;
+                VALUE_TYPE sum = 0;
+                #pragma unroll
+                for (int k = 0; k < BS; ++k) {
+                    sum += sA[rr * BS + k] * Yp[k * BS + cc];
+                }
+                sRhs[lane] -= sum;
+            }
+#endif
+            __syncwarp();
+        }
+
+        VALUE_TYPE* Ycur = Mval + (start + idx) * BS2;
+        const VALUE_TYPE* inv = DinvL + t * BS2;
+
+#if __CUDA_ARCH__ >= 800
+        tc_gemm_Dinv_rhs_5x5_k4_store(
+            (double*)Ycur,
+            (const double*)inv,
+            (const double*)sRhs
+        );
+        __syncwarp();
+        add_tail_Dinv_rhs_k4_outer_product(
+            (double*)Ycur,
+            (const double*)inv,
+            (const double*)sRhs
+        );
+#else
+        if (lane < BS2) {
+            int rr = lane / BS;
+            int cc = lane - rr * BS;
+            VALUE_TYPE acc = 0;
+
+            #pragma unroll
+            for (int k = 0; k < BS; ++k) {
+                acc += inv[rr * BS + k] * sRhs[k * BS + cc];
+            }
+
+            Ycur[lane] = acc;
+        }
+#endif
+        __syncwarp();
+    }
+}
+
+__device__ __forceinline__
+void isai_lower_bsr5_light_globalY_scalar_col_body(
+    int j,
+    int nb,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL)
+{
+    int lane = threadIdx.x & 31;
+    if (j >= nb) return;
+
+    int start = Mbrow[j];
+    int end   = Mbrow[j + 1];
+    int N     = end - start;
+    if (N <= 0) return;
+
+    unsigned active = __ballot_sync(0xffffffff, lane < BS2);
+
+    for (int idx = 0; idx < N; ++idx) {
+        int t = Mcol[start + idx];
+        VALUE_TYPE rhs = 0;
+        int rr = 0;
+        int cc = 0;
+
+        if (lane < BS2) {
+            rr = lane / BS;
+            cc = lane - rr * BS;
+            rhs = (t == j && rr == cc) ? (VALUE_TYPE)1 : (VALUE_TYPE)0;
+        }
+
+        int g0   = start + idx;
+        int qbeg = PairPtr[g0];
+        int qend = PairPtr[g0 + 1];
+
+        for (int q = qbeg; q < qend; ++q) {
+            int p_local = PairPLocal[q];
+            int srcA    = PairSrc[q];
+
+            if (lane < BS2) {
+                const VALUE_TYPE* Ablk = Abval + srcA * BS2;
+                const VALUE_TYPE* Yp   = Mval + (start + p_local) * BS2;
+
+                VALUE_TYPE sum = 0;
+                #pragma unroll
+                for (int k = 0; k < BS; ++k) {
+                    sum += Ablk[rr * BS + k] * Yp[k * BS + cc];
+                }
+                rhs -= sum;
+            }
+        }
+
+        if (lane < BS2) {
+            const VALUE_TYPE* inv = DinvL + t * BS2;
+            VALUE_TYPE y = 0;
+
+            #pragma unroll
+            for (int k = 0; k < BS; ++k) {
+                VALUE_TYPE rhs_k = __shfl_sync(active, rhs, k * BS + cc);
+                y += inv[rr * BS + k] * rhs_k;
+            }
+
+            Mval[(start + idx) * BS2 + lane] = y;
+        }
+        __syncwarp();
+    }
+}
+
+__global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_light_globalY_scalar_cols(
+    int nb,
+    const int* __restrict__ WorkCols,
+    int nWorkCols,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL)
+{
+    int warp = threadIdx.x >> 5;
+    int warpsPerBlock = blockDim.x >> 5;
+    int work = blockIdx.x * warpsPerBlock + warp;
+    if (work >= nWorkCols) return;
+
+    int j = WorkCols[work];
+    isai_lower_bsr5_light_globalY_scalar_col_body(
+        j, nb, Abrow, Abcol, Abval, Mbrow, Mcol,
+        PairPtr, PairPLocal, PairSrc, Mval, DinvL);
+}
+
+__global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_light_globalY_tensor_cols(
+    int nb,
+    const int* __restrict__ WorkCols,
+    int nWorkCols,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL)
+{
+    int warp = threadIdx.x >> 5;
+    int warpsPerBlock = blockDim.x >> 5;
+    int work = blockIdx.x * warpsPerBlock + warp;
+    if (work >= nWorkCols) return;
+
+    extern __shared__ VALUE_TYPE sh[];
+    int j = WorkCols[work];
+    isai_lower_bsr5_light_globalY_tensor_col_body(
+        j, nb, Abrow, Abcol, Abval, Mbrow, Mcol,
+        PairPtr, PairPLocal, PairSrc, Mval, DinvL, sh, warp);
+}
+
+__global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor(
+    int nb,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL)
+{
+    int warp = threadIdx.x >> 5;
+    int warpsPerBlock = blockDim.x >> 5;
+    int j = blockIdx.x * warpsPerBlock + warp;
+
+    extern __shared__ VALUE_TYPE sh[];
+    isai_lower_bsr5_light_globalY_tensor_col_body(
+        j, nb, Abrow, Abcol, Abval, Mbrow, Mcol,
+        PairPtr, PairPLocal, PairSrc, Mval, DinvL, sh, warp);
+}
+
+__device__ __forceinline__
+void isai_lower_bsr5_cachedY_tensor_col_body(
+    int j,
+    int nb,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL,
+    int Nmax_perwarp,
+    VALUE_TYPE* sh,
+    int warp)
+{
+    int lane = threadIdx.x & 31;
+    if (j >= nb) return;
+
+    int start = Mbrow[j];
+    int end   = Mbrow[j + 1];
+    int N     = end - start;
+    if (N <= 0 || N > Nmax_perwarp) return;
+
+    VALUE_TYPE* warp_base = sh + warp * ((2 * BS2) + Nmax_perwarp * BS2);
+    VALUE_TYPE* sRhs  = warp_base + 0;
+    VALUE_TYPE* sA    = warp_base + BS2;
+    VALUE_TYPE* sYall = warp_base + 2 * BS2;
+
+    for (int idx = 0; idx < N; ++idx) {
+        int t = Mcol[start + idx];
+
+        if (lane < BS2) {
+            int r = lane / BS;
+            int c = lane - r * BS;
+            sRhs[lane] = (t == j && r == c) ? (VALUE_TYPE)1 : (VALUE_TYPE)0;
+        }
+        __syncwarp();
+
+        int g0   = start + idx;
+        int qbeg = PairPtr[g0];
+        int qend = PairPtr[g0 + 1];
+
+        for (int q = qbeg; q < qend; ++q) {
+            int p_local = PairPLocal[q];
+            int srcA    = PairSrc[q];
+
+            if (lane < BS2) {
+                sA[lane] = Abval[srcA * BS2 + lane];
+            }
+
+            const VALUE_TYPE* Yp = sYall + p_local * BS2;
+
+#if __CUDA_ARCH__ >= 800
+            tc_update_rhs_5x5_k4((double*)sRhs, (const double*)sA, (const double*)Yp);
+            add_tail_k4_outer_product(sRhs, sA, Yp);
+#else
+            if (lane < BS2) {
+                int rr = lane / BS;
+                int cc = lane - rr * BS;
+                VALUE_TYPE sum = 0;
+                #pragma unroll
+                for (int k = 0; k < 4; ++k) {
+                    sum += sA[rr * BS + k] * Yp[k * BS + cc];
+                }
+                sRhs[lane] -= sum;
+            }
+#endif
+            __syncwarp();
+        }
+
+        const VALUE_TYPE* inv  = DinvL + t * BS2;
+        VALUE_TYPE*       Ycur = sYall + idx * BS2;
+
+#if __CUDA_ARCH__ >= 800
+        tc_gemm_Dinv_rhs_5x5_k4_store(
+            (double*)Ycur,
+            (const double*)inv,
+            (const double*)sRhs
+        );
+        __syncwarp();
+        add_tail_Dinv_rhs_k4_outer_product(
+            (double*)Ycur,
+            (const double*)inv,
+            (const double*)sRhs
+        );
+#else
+        if (lane < BS2) {
+            int rr = lane / BS;
+            int cc = lane - rr * BS;
+            VALUE_TYPE acc = 0;
+
+            #pragma unroll
+            for (int k = 0; k < BS; ++k) {
+                acc += inv[rr * BS + k] * sRhs[k * BS + cc];
+            }
+
+            Ycur[lane] = acc;
+        }
+#endif
+        __syncwarp();
+    }
+
+    for (int idx = 0; idx < N; ++idx) {
+        if (lane < BS2) {
+            Mval[(start + idx) * BS2 + lane] = sYall[idx * BS2 + lane];
+        }
+        __syncwarp();
+    }
+}
+
+__global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor_shortcols(
+    int nb,
+    const int* __restrict__ WorkCols,
+    int nWorkCols,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL,
+    int Nmax_perwarp)
+{
+    int warp = threadIdx.x >> 5;
+    int warpsPerBlock = blockDim.x >> 5;
+    int work = blockIdx.x * warpsPerBlock + warp;
+    if (work >= nWorkCols) return;
+
+    extern __shared__ VALUE_TYPE sh[];
+    int j = WorkCols[work];
+    isai_lower_bsr5_cachedY_tensor_col_body(
+        j, nb, Abrow, Abcol, Abval, Mbrow, Mcol,
+        PairPtr, PairPLocal, PairSrc, Mval, DinvL,
+        Nmax_perwarp, sh, warp);
+}
+
+__global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor_longcols(
+    int nb,
+    const int* __restrict__ WorkCols,
+    int nWorkCols,
+    const int* __restrict__ Abrow,
+    const int* __restrict__ Abcol,
+    const VALUE_TYPE* __restrict__ Abval,
+    const int* __restrict__ Mbrow,
+    const int* __restrict__ Mcol,
+    const int* __restrict__ PairPtr,
+    const int* __restrict__ PairPLocal,
+    const int* __restrict__ PairSrc,
+    VALUE_TYPE* __restrict__ Mval,
+    const VALUE_TYPE* __restrict__ DinvL,
+    int Nmax_perwarp)
+{
+    int warp = threadIdx.x >> 5;
+    int warpsPerBlock = blockDim.x >> 5;
+    int work = blockIdx.x * warpsPerBlock + warp;
+    if (work >= nWorkCols) return;
+
+    extern __shared__ VALUE_TYPE sh[];
+    int j = WorkCols[work];
+    isai_lower_bsr5_cachedY_tensor_col_body(
+        j, nb, Abrow, Abcol, Abval, Mbrow, Mcol,
+        PairPtr, PairPLocal, PairSrc, Mval, DinvL,
+        Nmax_perwarp, sh, warp);
 }
 __global__ void isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor_cacheN(
     int nb,

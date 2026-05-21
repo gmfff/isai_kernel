@@ -2,7 +2,7 @@
 #SBATCH --job-name=tri_test      # 任务名称
 #SBATCH --partition=normal       # 分区名称（根据你之前的截图，应该是 normal）
 #SBATCH --nodelist=cn1
-#SBATCH --gres=gpu:1             # 申请 1 个 GPU
+##SBATCH --gres=gpu:1             # 申请 1 个 GPU
 #SBATCH --output=tri_%j.out      # 标准输出日志（%j会被替换为作业ID）
 #SBATCH --error=tri_%j.err       # 错误日志
 
