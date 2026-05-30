@@ -1,4 +1,5 @@
 #include "common.h"
+#include "config.h"
 #include <cuda_runtime.h>
 #include <thrust/device_ptr.h>
 #include <thrust/scan.h>
@@ -446,20 +447,20 @@ void bsr_SpMV_tensorcore(const int           *bsrRowPtr_A,
     dim3 gridDim((mb + rows_per_block - 1) / rows_per_block);  // ceil(mb / 8)
     printf("mb%d\n",mb);
     //warm-up
-    for (int i = 0; i < 100; ++i){
+    for (int i = 0; i < BENCH_WARMUP_ITERS; ++i){
         //bsr_spmv_kernel_new<<<gridDim, blockDim>>>(d_bsrRowPtr_A,d_bsrColIdx_A,d_bsrVal_A,mb,nnzb,bdim,d_Val_B,d_Val_C);
         bsr_spmv_bdim5_kernel<<<gridDim, blockDim>>>(d_bsrRowPtr_A,d_bsrColIdx_A,d_bsrVal_A,mb,nnzb,d_Val_B,d_Val_C);
     }
     cudaDeviceSynchronize();
     gettimeofday(&t1, NULL);
-    for (int i = 0; i < 1000; ++i){
+    for (int i = 0; i < BENCH_TIMING_ITERS; ++i){
         //bsr_spmv_kernel_new<<<gridDim, blockDim>>>(d_bsrRowPtr_A,d_bsrColIdx_A,d_bsrVal_A,mb,nnzb,bdim,d_Val_B,d_Val_C);
         bsr_spmv_bdim5_kernel<<<gridDim, blockDim>>>(d_bsrRowPtr_A,d_bsrColIdx_A,d_bsrVal_A,mb,nnzb,d_Val_B,d_Val_C);
     }
     // 最后记得释放设备内存
     cudaDeviceSynchronize();
     gettimeofday(&t2, NULL);
-    double time_tensor_SV = ((t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0)/1000;
+    double time_tensor_SV = ((t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0) / BENCH_TIMING_ITERS;
     printf("tensor-core SpMV time: %f\n",time_tensor_SV);
     long long int totalFlops = 2 * nnzb * bdim * bdim;  // Total number of floating point operations
     double gflops = (totalFlops / time_tensor_SV) / 1e6;  // GFLOPS

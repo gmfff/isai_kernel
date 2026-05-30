@@ -21,6 +21,13 @@
 #include <thrust/scan.h>
 #include "analyze_pair.h"
 
+struct IsaiKernelTimes {
+    float lower = 0.0f;
+    float lower_tensor = 0.0f;
+    float lower_globalY_tensor = 0.0f;
+    float upper = 0.0f;
+};
+
 #ifndef CHECK_CUSPARSE
 #define CHECK_CUSPARSE(call) do { \
     auto st = (call); \
@@ -41,6 +48,404 @@
 } while (0)
 #endif
 
+static void run_isai_kernels_bs4(
+    int nb,
+    int Nmax_perwarp,
+    const int* d_Abrow,
+    const int* d_Abcol,
+    const VALUE_TYPE* d_Abval,
+    const int* d_MbrowL,
+    const int* d_McolL,
+    VALUE_TYPE* d_MvalL,
+    const int* d_MbrowU,
+    const int* d_McolU,
+    VALUE_TYPE* d_MvalU,
+    const int* d_PairPtr,
+    const int* d_PairPLocal,
+    const int* d_PairSrc,
+    const VALUE_TYPE* d_DinvL,
+    VALUE_TYPE*& d_DinvU,
+    IsaiKernelTimes& times,
+    cudaEvent_t start1,
+    cudaEvent_t stop1,
+    cudaEvent_t start2,
+    cudaEvent_t stop2,
+    cudaEvent_t start5,
+    cudaEvent_t stop5,
+    cudaEvent_t start6,
+    cudaEvent_t stop6)
+{
+    int warpsPerBlock = 1;
+    dim3 block(32 * warpsPerBlock);
+    dim3 grid((nb + warpsPerBlock - 1) / warpsPerBlock);
+
+    size_t shmem_bytes =
+        (size_t)warpsPerBlock * ((2 * BS2) + Nmax_perwarp * BS2) * sizeof(VALUE_TYPE);
+    size_t shmem_tensor_bytes = shmem_bytes;
+
+    int warpsPerBlockGlobalY = 4;
+    dim3 blockGlobalY(32 * warpsPerBlockGlobalY);
+    dim3 gridGlobalY((nb + warpsPerBlockGlobalY - 1) / warpsPerBlockGlobalY);
+    size_t shmemGlobalY =
+        (size_t)warpsPerBlockGlobalY * (2 * BS2) * sizeof(VALUE_TYPE);
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start1, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaEventRecord(stop1, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop1));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower, start1, stop1));
+    CHECK_CUDA(cudaGetLastError());
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr4_warpcol_with_pairs_kernel_cachedY_tensor_notail<<<grid, block, shmem_tensor_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start5, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr4_warpcol_with_pairs_kernel_cachedY_tensor_notail<<<grid, block, shmem_tensor_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaEventRecord(stop5, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop5));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower_tensor, start5, stop5));
+    CHECK_CUDA(cudaGetLastError());
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr4_warpcol_with_pairs_kernel_globalY_tensor_notail
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start6, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr4_warpcol_with_pairs_kernel_globalY_tensor_notail
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL);
+    }
+    CHECK_CUDA(cudaEventRecord(stop6, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop6));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower_globalY_tensor, start6, stop6));
+    CHECK_CUDA(cudaGetLastError());
+
+    CHECK_CUDA(cudaMalloc(&d_DinvU, nb * BS2 * sizeof(VALUE_TYPE)));
+    {
+        dim3 g((nb + 127) / 128), b(128);
+        build_DinvU_from_BSR5_kernel_fix<<<g, b>>>(nb, d_Abrow, d_Abcol, d_Abval, d_DinvU);
+        CHECK_CUDA(cudaGetLastError());
+    }
+
+    int warpsPerBlockU = 4;
+    dim3 blockU(32 * warpsPerBlockU);
+    dim3 gridU((nb + warpsPerBlockU - 1) / warpsPerBlockU);
+    size_t shmemU = (size_t)warpsPerBlockU * (3 * BS2) * sizeof(VALUE_TYPE);
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowU, d_McolU, d_MvalU, d_DinvU);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start2, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowU, d_McolU, d_MvalU, d_DinvU);
+    }
+    CHECK_CUDA(cudaEventRecord(stop2, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop2));
+    CHECK_CUDA(cudaEventElapsedTime(&times.upper, start2, stop2));
+    CHECK_CUDA(cudaGetLastError());
+}
+
+static void run_isai_kernels_bs5(
+    int nb,
+    int Nmax_perwarp,
+    const int* d_Abrow,
+    const int* d_Abcol,
+    const VALUE_TYPE* d_Abval,
+    const int* d_MbrowL,
+    const int* d_McolL,
+    VALUE_TYPE* d_MvalL,
+    const int* d_MbrowU,
+    const int* d_McolU,
+    VALUE_TYPE* d_MvalU,
+    const int* d_PairPtr,
+    const int* d_PairPLocal,
+    const int* d_PairSrc,
+    const VALUE_TYPE* d_DinvL,
+    VALUE_TYPE*& d_DinvU,
+    IsaiKernelTimes& times,
+    cudaEvent_t start1,
+    cudaEvent_t stop1,
+    cudaEvent_t start2,
+    cudaEvent_t stop2,
+    cudaEvent_t start5,
+    cudaEvent_t stop5,
+    cudaEvent_t start6,
+    cudaEvent_t stop6)
+{
+    int warpsPerBlock = 1;
+    dim3 block(32 * warpsPerBlock);
+    dim3 grid((nb + warpsPerBlock - 1) / warpsPerBlock);
+
+    size_t shmem_bytes =
+        (size_t)warpsPerBlock * ((2 * BS2) + Nmax_perwarp * BS2) * sizeof(VALUE_TYPE);
+    size_t shmem_tensor_bytes = shmem_bytes;
+
+    int warpsPerBlockGlobalY = 4;
+    dim3 blockGlobalY(32 * warpsPerBlockGlobalY);
+    dim3 gridGlobalY((nb + warpsPerBlockGlobalY - 1) / warpsPerBlockGlobalY);
+    size_t shmemGlobalY =
+        (size_t)warpsPerBlockGlobalY * (2 * BS2) * sizeof(VALUE_TYPE);
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start1, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaEventRecord(stop1, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop1));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower, start1, stop1));
+    CHECK_CUDA(cudaGetLastError());
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_tensor_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start5, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_tensor_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaEventRecord(stop5, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop5));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower_tensor, start5, stop5));
+    CHECK_CUDA(cudaGetLastError());
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start6, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL);
+    }
+    CHECK_CUDA(cudaEventRecord(stop6, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop6));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower_globalY_tensor, start6, stop6));
+    CHECK_CUDA(cudaGetLastError());
+
+    CHECK_CUDA(cudaMalloc(&d_DinvU, nb * BS2 * sizeof(VALUE_TYPE)));
+    {
+        dim3 g((nb + 127) / 128), b(128);
+        build_DinvU_from_BSR5_kernel_fix<<<g, b>>>(nb, d_Abrow, d_Abcol, d_Abval, d_DinvU);
+        CHECK_CUDA(cudaGetLastError());
+    }
+
+    int warpsPerBlockU = 4;
+    dim3 blockU(32 * warpsPerBlockU);
+    dim3 gridU((nb + warpsPerBlockU - 1) / warpsPerBlockU);
+    size_t shmemU = (size_t)warpsPerBlockU * (3 * BS2) * sizeof(VALUE_TYPE);
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowU, d_McolU, d_MvalU, d_DinvU);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start2, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowU, d_McolU, d_MvalU, d_DinvU);
+    }
+    CHECK_CUDA(cudaEventRecord(stop2, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop2));
+    CHECK_CUDA(cudaEventElapsedTime(&times.upper, start2, stop2));
+    CHECK_CUDA(cudaGetLastError());
+}
+
+static void run_isai_kernels_bs7(
+    int nb,
+    int Nmax_perwarp,
+    const int* d_Abrow,
+    const int* d_Abcol,
+    const VALUE_TYPE* d_Abval,
+    const int* d_MbrowL,
+    const int* d_McolL,
+    VALUE_TYPE* d_MvalL,
+    const int* d_MbrowU,
+    const int* d_McolU,
+    VALUE_TYPE* d_MvalU,
+    const int* d_PairPtr,
+    const int* d_PairPLocal,
+    const int* d_PairSrc,
+    const VALUE_TYPE* d_DinvL,
+    VALUE_TYPE*& d_DinvU,
+    IsaiKernelTimes& times,
+    cudaEvent_t start1,
+    cudaEvent_t stop1,
+    cudaEvent_t start2,
+    cudaEvent_t stop2,
+    cudaEvent_t start5,
+    cudaEvent_t stop5,
+    cudaEvent_t start6,
+    cudaEvent_t stop6)
+{
+    int warpsPerBlock = 1;
+    dim3 block(32 * warpsPerBlock);
+    dim3 grid((nb + warpsPerBlock - 1) / warpsPerBlock);
+
+    size_t shmem_bytes =
+        (size_t)warpsPerBlock * ((2 * BS2) + Nmax_perwarp * BS2) * sizeof(VALUE_TYPE);
+    size_t shmem_tensor_bytes = shmem_bytes;
+
+    int warpsPerBlockGlobalY = 4;
+    dim3 blockGlobalY(32 * warpsPerBlockGlobalY);
+    dim3 gridGlobalY((nb + warpsPerBlockGlobalY - 1) / warpsPerBlockGlobalY);
+    size_t shmemGlobalY =
+        (size_t)warpsPerBlockGlobalY * (2 * BS2) * sizeof(VALUE_TYPE);
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start1, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaEventRecord(stop1, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop1));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower, start1, stop1));
+    CHECK_CUDA(cudaGetLastError());
+
+    // BS=7 scheme 2:
+    // first m8n8k4 handles k=0..3, second m8n8k4 handles k=4..6 with zero padding.
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr7_warpcol_with_pairs_kernel_cachedY_tensor_twomma<<<grid, block, shmem_tensor_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start5, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr7_warpcol_with_pairs_kernel_cachedY_tensor_twomma<<<grid, block, shmem_tensor_bytes>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+            d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL,
+            Nmax_perwarp);
+    }
+    CHECK_CUDA(cudaEventRecord(stop5, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop5));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower_tensor, start5, stop5));
+    CHECK_CUDA(cudaGetLastError());
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_lower_bsr7_warpcol_with_pairs_kernel_globalY_tensor_twomma
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL);
+        CHECK_CUDA(cudaGetLastError());
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start6, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_lower_bsr7_warpcol_with_pairs_kernel_globalY_tensor_twomma
+            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
+                nb, d_Abrow, d_Abcol, d_Abval, d_MbrowL, d_McolL,
+                d_PairPtr, d_PairPLocal, d_PairSrc, d_MvalL, d_DinvL);
+    }
+    CHECK_CUDA(cudaEventRecord(stop6, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop6));
+    CHECK_CUDA(cudaEventElapsedTime(&times.lower_globalY_tensor, start6, stop6));
+    CHECK_CUDA(cudaGetLastError());
+
+    CHECK_CUDA(cudaMalloc(&d_DinvU, nb * BS2 * sizeof(VALUE_TYPE)));
+    {
+        dim3 g((nb + 127) / 128), b(128);
+        build_DinvU_from_BSR5_kernel_fix<<<g, b>>>(nb, d_Abrow, d_Abcol, d_Abval, d_DinvU);
+        CHECK_CUDA(cudaGetLastError());
+    }
+
+    int warpsPerBlockU = 4;
+    dim3 blockU(32 * warpsPerBlockU);
+    dim3 gridU((nb + warpsPerBlockU - 1) / warpsPerBlockU);
+    size_t shmemU = (size_t)warpsPerBlockU * (3 * BS2) * sizeof(VALUE_TYPE);
+
+    for (int i = 0; i < BENCH_WARMUP_ITERS; i++) {
+        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowU, d_McolU, d_MvalU, d_DinvU);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    CHECK_CUDA(cudaEventRecord(start2, 0));
+    for (int i = 0; i < BENCH_TIMING_ITERS; i++) {
+        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
+            nb, d_Abrow, d_Abcol, d_Abval, d_MbrowU, d_McolU, d_MvalU, d_DinvU);
+    }
+    CHECK_CUDA(cudaEventRecord(stop2, 0));
+    CHECK_CUDA(cudaEventSynchronize(stop2));
+    CHECK_CUDA(cudaEventElapsedTime(&times.upper, start2, stop2));
+    CHECK_CUDA(cudaGetLastError());
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " matrix.mtx\n";
@@ -55,10 +460,6 @@ int main(int argc, char** argv) {
     // 0. Event
     // =========================================================
     cudaEvent_t start1, stop1, start2, stop2, start3, stop3, start5, stop5, start6, stop6;
-    float time_lower = 0.0f;
-    float time_lower_tensor = 0.0f;
-    float time_lower_globalY_tensor = 0.0f;
-    float time_upper = 0.0f;
     float time_spmv_lower = 0.0f;
 
     CHECK_CUDA(cudaEventCreate(&start1));
@@ -93,7 +494,7 @@ int main(int argc, char** argv) {
               << ", nnz = " << csrVal.size() << "\n";
 
     // =========================================================
-    // 2. CSR -> BSR(5x5)
+    // 2. CSR -> BSR(BS x BS)
     // =========================================================
     int nb = 0;
     std::vector<int> bsrRow, bsrCol;
@@ -302,7 +703,6 @@ int main(int argc, char** argv) {
     }
     std::cout << "Nmax = " << Nmax << "\n";
 
-    //analyze L nnz map
     /*analyze_pair_lengths(nb, h_MbrowL, h_PairPtr);
     analyze_column_q_distribution(nb, h_MbrowL, h_PairPtr, 30);
     analyze_column_q_bins(nb, h_MbrowL, h_PairPtr, 10);
@@ -324,163 +724,57 @@ int main(int argc, char** argv) {
         d_PairPtr, d_PairPLocal, d_PairSrc);
     CHECK_CUDA(cudaGetLastError());
 
-    unsigned int* d_cnt = nullptr;
-    CHECK_CUDA(cudaMalloc(&d_cnt, sizeof(unsigned int)));
-    CHECK_CUDA(cudaMemset(d_cnt, 0, sizeof(unsigned int)));
-
-    int threads = 256;
-    int blocks = (total_pairs + threads - 1) / threads;
-    // count_npairs_gt4_kernel<<<blocks, threads>>>(total_pairs, d_PairPtr, d_cnt);
-    CHECK_CUDA(cudaGetLastError());
-    CHECK_CUDA(cudaDeviceSynchronize());
-
     unsigned int h_cnt = 0;
-    CHECK_CUDA(cudaMemcpy(&h_cnt, d_cnt, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    for (int g = 0; g < Mnnz; ++g) {
+        if (h_PairPtr[g + 1] - h_PairPtr[g] > 4) {
+            ++h_cnt;
+        }
+    }
     std::cout << "Mnnz: " << Mnnz
               << " [INFO] entries with pair > 4 : "
               << h_cnt << " / " << total_pairs << "\n";
 
-    CHECK_CUDA(cudaFree(d_cnt));
-
-    int Nmax_perwarp = Nmax;
-    size_t shmem_bytes =
-        warpsPerBlock * ((2 * BS2) + Nmax_perwarp * BS2) * sizeof(VALUE_TYPE);
-    size_t shmem_tensor_bytes = shmem_bytes;
-
-    int warpsPerBlockGlobalY = 4;
-    dim3 blockGlobalY(32 * warpsPerBlockGlobalY);
-    dim3 gridGlobalY((nb + warpsPerBlockGlobalY - 1) / warpsPerBlockGlobalY);
-    size_t shmemGlobalY =
-        (size_t)warpsPerBlockGlobalY * (2 * BS2) * sizeof(VALUE_TYPE);
-
-    // =========================================================
-    // 9. ISAI(L) normal
-    // =========================================================
-    for (int i = 0; i < 100; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
-            nb,
-            d_Abrow, d_Abcol, d_Abval,
-            d_MbrowL, d_McolL,
-            d_PairPtr, d_PairPLocal, d_PairSrc,
-            d_MvalL, d_DinvL,
-            Nmax_perwarp);
-    }
-    CHECK_CUDA(cudaDeviceSynchronize());
-
-    CHECK_CUDA(cudaEventRecord(start1, 0));
-    for (int i = 0; i < 1000; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY<<<grid, block, shmem_bytes>>>(
-            nb,
-            d_Abrow, d_Abcol, d_Abval,
-            d_MbrowL, d_McolL,
-            d_PairPtr, d_PairPLocal, d_PairSrc,
-            d_MvalL, d_DinvL,
-            Nmax_perwarp);
-    }
-    CHECK_CUDA(cudaEventRecord(stop1, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop1));
-    CHECK_CUDA(cudaEventElapsedTime(&time_lower, start1, stop1));
-    CHECK_CUDA(cudaGetLastError());
-
-    // =========================================================
-    // 10. ISAI(L) tensor
-    // =========================================================
-    for (int i = 0; i < 100; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_tensor_bytes>>>(
-            nb,
-            d_Abrow, d_Abcol, d_Abval,
-            d_MbrowL, d_McolL,
-            d_PairPtr, d_PairPLocal, d_PairSrc,
-            d_MvalL, d_DinvL,
-            Nmax_perwarp);
-        CHECK_CUDA(cudaGetLastError());
-    }
-    CHECK_CUDA(cudaDeviceSynchronize());
-
-    CHECK_CUDA(cudaEventRecord(start5, 0));
-    for (int i = 0; i < 1000; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_cachedY_tensor<<<grid, block, shmem_tensor_bytes>>>(
-            nb,
-            d_Abrow, d_Abcol, d_Abval,
-            d_MbrowL, d_McolL,
-            d_PairPtr, d_PairPLocal, d_PairSrc,
-            d_MvalL, d_DinvL,
-            Nmax_perwarp);
-    }
-    CHECK_CUDA(cudaEventRecord(stop5, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop5));
-    CHECK_CUDA(cudaEventElapsedTime(&time_lower_tensor, start5, stop5));
-    CHECK_CUDA(cudaGetLastError());
-
-    // =========================================================
-    // 10b. ISAI(L) tensor without shared Y cache
-    // =========================================================
-    for (int i = 0; i < 100; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor
-            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
-                nb,
-                d_Abrow, d_Abcol, d_Abval,
-                d_MbrowL, d_McolL,
-                d_PairPtr, d_PairPLocal, d_PairSrc,
-                d_MvalL, d_DinvL);
-        CHECK_CUDA(cudaGetLastError());
-    }
-    CHECK_CUDA(cudaDeviceSynchronize());
-
-    CHECK_CUDA(cudaEventRecord(start6, 0));
-    for (int i = 0; i < 1000; i++) {
-        isai_lower_bsr5_warpcol_with_pairs_kernel_globalY_tensor
-            <<<gridGlobalY, blockGlobalY, shmemGlobalY>>>(
-                nb,
-                d_Abrow, d_Abcol, d_Abval,
-                d_MbrowL, d_McolL,
-                d_PairPtr, d_PairPLocal, d_PairSrc,
-                d_MvalL, d_DinvL);
-    }
-    CHECK_CUDA(cudaEventRecord(stop6, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop6));
-    CHECK_CUDA(cudaEventElapsedTime(&time_lower_globalY_tensor, start6, stop6));
-    CHECK_CUDA(cudaGetLastError());
-
-    // =========================================================
-    // 11. ISAI(U)
-    // =========================================================
     VALUE_TYPE* d_DinvU = nullptr;
-    CHECK_CUDA(cudaMalloc(&d_DinvU, nb * BS2 * sizeof(VALUE_TYPE)));
-    {
-        dim3 g((nb + 127) / 128), b(128);
-        build_DinvU_from_BSR5_kernel_fix<<<g, b>>>(nb, d_Abrow, d_Abcol, d_Abval, d_DinvU);
-        CHECK_CUDA(cudaGetLastError());
+    IsaiKernelTimes isai_times;
+
+    switch (BS) {
+    case 4:
+        run_isai_kernels_bs4(
+            nb, Nmax, d_Abrow, d_Abcol, d_Abval,
+            d_MbrowL, d_McolL, d_MvalL,
+            d_MbrowU, d_McolU, d_MvalU,
+            d_PairPtr, d_PairPLocal, d_PairSrc,
+            d_DinvL, d_DinvU, isai_times,
+            start1, stop1, start2, stop2, start5, stop5, start6, stop6);
+        break;
+    case 5:
+        run_isai_kernels_bs5(
+            nb, Nmax, d_Abrow, d_Abcol, d_Abval,
+            d_MbrowL, d_McolL, d_MvalL,
+            d_MbrowU, d_McolU, d_MvalU,
+            d_PairPtr, d_PairPLocal, d_PairSrc,
+            d_DinvL, d_DinvU, isai_times,
+            start1, stop1, start2, stop2, start5, stop5, start6, stop6);
+        break;
+    case 7:
+        run_isai_kernels_bs7(
+            nb, Nmax, d_Abrow, d_Abcol, d_Abval,
+            d_MbrowL, d_McolL, d_MvalL,
+            d_MbrowU, d_McolU, d_MvalU,
+            d_PairPtr, d_PairPLocal, d_PairSrc,
+            d_DinvL, d_DinvU, isai_times,
+            start1, stop1, start2, stop2, start5, stop5, start6, stop6);
+        break;
+    default:
+        std::cerr << "Unsupported BS = " << BS << ". Supported values are 4, 5 and 7.\n";
+        return 1;
     }
 
-    int warpsPerBlockU = 4;
-    dim3 blockU(32 * warpsPerBlockU);
-    dim3 gridU((nb + warpsPerBlockU - 1) / warpsPerBlockU);
-    size_t shmemU = (size_t)warpsPerBlockU * (3 * BS2) * sizeof(VALUE_TYPE);
-
-    for (int i = 0; i < 100; i++) {
-        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
-            nb, d_Abrow, d_Abcol, d_Abval,
-            d_MbrowU, d_McolU, d_MvalU, d_DinvU);
-    }
-    CHECK_CUDA(cudaDeviceSynchronize());
-
-    CHECK_CUDA(cudaEventRecord(start2, 0));
-    for (int i = 0; i < 1000; i++) {
-        isai_upper_bsr5_warpcol_with_Dinv_kernel<<<gridU, blockU, shmemU>>>(
-            nb, d_Abrow, d_Abcol, d_Abval,
-            d_MbrowU, d_McolU, d_MvalU, d_DinvU);
-    }
-    CHECK_CUDA(cudaEventRecord(stop2, 0));
-    CHECK_CUDA(cudaEventSynchronize(stop2));
-    CHECK_CUDA(cudaEventElapsedTime(&time_upper, start2, stop2));
-    CHECK_CUDA(cudaGetLastError());
-
-    std::cout << "ISAI(L) kernel avg time: " << time_lower / 1000.0f << " ms\n";
-    std::cout << "ISAI(L) tensor avg time: " << time_lower_tensor / 1000.0f << " ms\n";
+    std::cout << "ISAI(L) kernel avg time: " << isai_times.lower / BENCH_TIMING_ITERS << " ms\n";
+    std::cout << "ISAI(L) tensor avg time: " << isai_times.lower_tensor / BENCH_TIMING_ITERS << " ms\n";
     std::cout << "ISAI(L) tensor globalY avg time: "
-              << time_lower_globalY_tensor / 1000.0f << " ms\n";
-    std::cout << "ISAI(U) kernel avg time: " << time_upper / 1000.0f << " ms\n";
+              << isai_times.lower_globalY_tensor / BENCH_TIMING_ITERS << " ms\n";
+    std::cout << "ISAI(U) kernel avg time: " << isai_times.upper / BENCH_TIMING_ITERS << " ms\n";
 
     // =========================================================
     // 12. BCSC value -> BCSR value
@@ -521,81 +815,30 @@ int main(int argc, char** argv) {
 
 
     // =================================================
-    //cusparse bsr spmv
+    // ISAI apply: y = M_L b, x = M_U y
     // =================================================
-    cusparseHandle_t cusparseH = nullptr;
-    CHECK_CUSPARSE(cusparseCreate(&cusparseH));
-    // -------- cuSPARSE descriptors for L --------
-    cusparseMatDescr_t descrL = nullptr;
-    CHECK_CUSPARSE(cusparseCreateMatDescr(&descrL));
-    CHECK_CUSPARSE(cusparseSetMatIndexBase(descrL, CUSPARSE_INDEX_BASE_ZERO));
-    CHECK_CUSPARSE(cusparseSetMatType(descrL, CUSPARSE_MATRIX_TYPE_GENERAL));
-
-    VALUE_TYPE alpha = 1.0;
-    VALUE_TYPE beta  = 0.0;
-
-    const int warps_per_block = 4;  // 每个block 4 warps (128 threads)
-    const int rows_per_block = warps_per_block * 1;  // 每个block处理 4 行 (4 warps × 1 rows/warp)
-    dim3 blockDim(32 * warps_per_block);  // 128 threads per block
-    dim3 gridDim((nb + rows_per_block - 1) / rows_per_block);  // ceil(mb / 8)
     int threads_spmv = 128;
-    int blocks_spmv = (nb + threads_spmv/32 - 1) / (threads_spmv/32);
-    for(int i=0;i<20;i++){
-        /*CHECK_CUSPARSE(cusparseDbsrmv(
-            cusparseH,
-            CUSPARSE_DIRECTION_ROW,          // 你的 5x5 block 按 row-major
-            CUSPARSE_OPERATION_NON_TRANSPOSE,
-            nb,                              // block rows
-            nb,                              // block cols
-            nnzbL,                           // nonzero blocks
-            &alpha,
-            descrL,
-            d_MbcsrValL,
-            d_MbcsrRowL,
-            d_MbcsrColL,
-            BS,                              // blockDim = 5
-            d_b,                             // scalar x, 长度 nrows
-            &beta,
-            d_y                              // scalar y, 长度 nrows
-        ));*/
-        bsr_spmv_bdim5_kernel<<<gridDim, blockDim>>>(d_MbcsrRowL, d_MbcsrColL, d_MbcsrValL,nb,nnzbL,d_b,d_y );
+    int blocks_spmv = (nb + threads_spmv - 1) / threads_spmv;
+    for(int i=0;i<BENCH_WARMUP_ITERS;i++){
+        bcsr_spmv<<<blocks_spmv, threads_spmv>>>(
+            nb, BS, BS,
+            d_MbcsrRowL, d_MbcsrColL, d_MbcsrValL,
+            d_b, d_y);
     }
     cudaDeviceSynchronize();
     CHECK_CUDA(cudaEventRecord(start3, 0));
-    /*bcsr_spmv<<<blocks_spmv, threads_spmv>>>(
-        nb, BS, BS,
-        d_MbcsrRowL, d_MbcsrColL, d_MbcsrValL,
-        d_b, d_y);*/
-    for(int i=0;i<1000;i++){
-        /*cusparseDbsrmv(
-            cusparseH,
-            CUSPARSE_DIRECTION_ROW,          // 你的 5x5 block 按 row-major
-            CUSPARSE_OPERATION_NON_TRANSPOSE,
-            nb,                              // block rows
-            nb,                              // block cols
-            nnzbL,                           // nonzero blocks
-            &alpha,
-            descrL,
-            d_MbcsrValL,
-            d_MbcsrRowL,
-            d_MbcsrColL,
-            BS,                              // blockDim = 5
-            d_b,                             // scalar x, 长度 nrows
-            &beta,
-            d_y                              // scalar y, 长度 nrows
-        );*/
-        /*bcsr_spmv<<<blocks_spmv, threads_spmv>>>(
-        nb, BS, BS,
-        d_MbcsrRowL, d_MbcsrColL, d_MbcsrValL,
-        d_b, d_y);*/
-        bsr_spmv_bdim5_kernel<<<gridDim, blockDim>>>(d_MbcsrRowL, d_MbcsrColL, d_MbcsrValL,nb,nnzbL,d_b,d_y );
+    for(int i=0;i<BENCH_TIMING_ITERS;i++){
+        bcsr_spmv<<<blocks_spmv, threads_spmv>>>(
+            nb, BS, BS,
+            d_MbcsrRowL, d_MbcsrColL, d_MbcsrValL,
+            d_b, d_y);
     }
     CHECK_CUDA(cudaEventRecord(stop3, 0));
     CHECK_CUDA(cudaEventSynchronize(stop3));
     CHECK_CUDA(cudaEventElapsedTime(&time_spmv_lower, start3, stop3));
     CHECK_CUDA(cudaGetLastError());
 
-    std::cout << "ISAI(L) SpMV kernel time: " << time_spmv_lower/1000.0f << " ms\n";
+    std::cout << "ISAI(L) SpMV kernel time: " << time_spmv_lower / BENCH_TIMING_ITERS << " ms\n";
 
     bcsr_spmv<<<blocks_spmv, threads_spmv>>>(
         nb, BS, BS,
@@ -634,9 +877,6 @@ int main(int argc, char** argv) {
     CHECK_CUDA(cudaMemcpy(h_MvalU.data(), d_MvalU,
                           nnzbU * BS2 * sizeof(VALUE_TYPE),
                           cudaMemcpyDeviceToHost));
-
-    // print_bcsc_blocks("M_L", nb, MbrowL, McolL, h_MvalL);
-    // print_bcsc_blocks("M_U", nb, MbrowU, McolU, h_MvalU);
 
     // =========================================================
     // 16. 清理

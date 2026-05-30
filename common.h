@@ -12,6 +12,7 @@
 //#include<stdlib.h>
 //#include<stdio.h>
 #include<cuda.h>
+#include "config.h"
 
 // common.h
 #ifdef USE_DOUBLE
@@ -22,7 +23,7 @@
 
 
 #ifndef BENCH_REPEAT
-#define BENCH_REPEAT 100
+#define BENCH_REPEAT BENCH_TIMING_ITERS
 #endif
 
 #ifndef WARP_SIZE
@@ -44,4 +45,3 @@
 //#ifndef CPU_CU_NUM
 //#define CPU_CU_NUM  4
 //#endif
-

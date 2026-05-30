@@ -1,4 +1,5 @@
 #include "common.h"
+#include "config.h"
 #include <cuda_runtime.h>
 #include <thrust/device_ptr.h>
 #include <thrust/scan.h>
@@ -195,7 +196,7 @@ int BILU_cuSPARSE(const int           *bsrRowPtr_A,
 
     // step 6/7: triangular solves
     //warmup
-    for (int i = 0; i < 100; ++i)
+    for (int i = 0; i < BENCH_WARMUP_ITERS; ++i)
     {
         BSRI_bsrsv2_solve(handle, dir, trans_L, mb, nnzb, &alpha, descr_L,
         d_bsrVal, d_bsrRowPtr, d_bsrColInd, blockDim, info_L,
@@ -205,7 +206,7 @@ int BILU_cuSPARSE(const int           *bsrRowPtr_A,
     gettimeofday(&t1, NULL);
 
     // solve L*z = x
-    for (int i = 0; i < 1000; ++i)
+    for (int i = 0; i < BENCH_TIMING_ITERS; ++i)
     {
         BSRI_bsrsv2_solve(handle, dir, trans_L, mb, nnzb, &alpha, descr_L,
             d_bsrVal, d_bsrRowPtr, d_bsrColInd, blockDim, info_L,
@@ -219,8 +220,8 @@ int BILU_cuSPARSE(const int           *bsrRowPtr_A,
         d_z, d_y, policy_U, pBuffer);
 
 
-    double time_cuda_SV = ((t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0)/1000;
-    printf("cuSPARSE block SpTRSV time: %f\n", time_cuda_SV);
+    double time_cuda_SV = ((t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_usec - t1.tv_usec) / 1000.0) / BENCH_TIMING_ITERS;
+    printf("cuSPARSE block ILU SV time: %f\n", time_cuda_SV);
 
     // Copy results back
     cudaMemcpy(x, d_y, m * sizeof(VALUE_TYPE), cudaMemcpyDeviceToHost);

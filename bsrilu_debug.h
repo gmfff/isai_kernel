@@ -1,28 +1,12 @@
 #pragma once
 #include "common.h"
+#include "config.h"
 
 #include <cuda_runtime.h>
 #include <vector>
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
-#include <cusparse_v2.h>   // [STEP4] 用于 SpMV(Ax)
-#include <cublas_v2.h>     // [STEP4] 用于范数/axpy
-#ifndef CHECK_CUSPARSE     // [STEP4]
-#define CHECK_CUSPARSE(call) do{ auto st=(call); if(st!=CUSPARSE_STATUS_SUCCESS){ \
-  std::cerr<<"cuSPARSE "<<int(st)<<" @"<<__FILE__<<":"<<__LINE__<<"\n"; std::exit(1);} }while(0)
-#endif
-#ifndef CHECK_CUBLAS       // [STEP4]
-#define CHECK_CUBLAS(call) do{ auto st=(call); if(st!=CUBLAS_STATUS_SUCCESS){ \
-  std::cerr<<"cuBLAS "<<int(st)<<" @"<<__FILE__<<":"<<__LINE__<<"\n"; std::exit(1);} }while(0)
-#endif
-#ifndef BS
-#define BS 5
-#endif
-#ifndef BS2
-#define BS2 (BS*BS)
-#endif
-
 #ifndef DBG_CUDA
 #define DBG_CUDA(call) do{auto _e=(call); if(_e!=cudaSuccess){ \
   std::cerr<<"CUDA "<<cudaGetErrorString(_e)<<" @"<<__FILE__<<":"<<__LINE__<<"\n"; std::exit(1);} }while(0)
@@ -159,132 +143,6 @@ void debug_check_MU_diag(
         std::cout << "  j="<<j<<"  ||U_kk*Mjj - I||_F = " << std::sqrt(fn) << "\n";
     }
 }
-
-// 需要你已有的：launch_bcsc_matvec_add_bsr5(...) 和 cusparse Dbsrmv
-// 需要你已有的：launch_bcsc_matvec_add_bsr5(...)
-#ifdef USE_DOUBLE
-void debug_check_columns_AMML(
-    int n, int nb, int nnzb,
-    const int* d_bsrRow, const int* d_bsrCol, const double* d_bsrVal_Aorig, // 原始 A
-    const int* d_MbrowL, const int* d_McolL, const double* d_MvalL,
-    const int* d_MbrowU, const int* d_McolU, const double* d_MvalU)
-{
-    // 临时向量
-    double *d_e=nullptr, *d_y=nullptr, *d_x=nullptr, *d_Ax=nullptr;
-    CHECK_CUDA(cudaMalloc(&d_e,  n*sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_y,  n*sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_x,  n*sizeof(double)));
-    CHECK_CUDA(cudaMalloc(&d_Ax, n*sizeof(double)));
-
-    // SpMV 句柄
-    cusparseHandle_t spH; CHECK_CUSPARSE(cusparseCreate(&spH));
-    cusparseMatDescr_t descrA; CHECK_CUSPARSE(cusparseCreateMatDescr(&descrA));
-    CHECK_CUSPARSE(cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-    CHECK_CUSPARSE(cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
-    double alpha=1.0, beta=0.0;
-
-    std::cout << "\n[DBG] Column-by-column: ||A*(M_U M_L e_j) - e_j||_2\n";
-    for (int j=0; j<nb; ++j) {
-        // e_j：把块内 5 个分量都设 1（按你原来的逻辑）
-        CHECK_CUDA(cudaMemset(d_e, 0, n*sizeof(double)));
-        for (int t=0;t<BS;++t){
-            double one = 1.0;
-            CHECK_CUDA(cudaMemcpy(d_e + j*BS + t, &one, sizeof(double), cudaMemcpyHostToDevice));
-        }
-
-        CHECK_CUDA(cudaMemset(d_y, 0, n*sizeof(double)));
-        CHECK_CUDA(cudaMemset(d_x, 0, n*sizeof(double)));
-
-        // y = M_L * e_j
-        launch_bcsc_matvec_add_bsr5(nb, d_MbrowL, d_McolL, d_MvalL, d_e, d_y);
-        // x = M_U * y
-        launch_bcsc_matvec_add_bsr5(nb, d_MbrowU, d_McolU, d_MvalU, d_y, d_x);
-
-        // Ax = A * x
-        CHECK_CUDA(cudaMemset(d_Ax, 0, n*sizeof(double)));
-        CHECK_CUSPARSE(cusparseDbsrmv(
-            spH, CUSPARSE_DIRECTION_ROW, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            n, n, nnzb, &alpha, descrA,
-            d_bsrVal_Aorig, d_bsrRow, d_bsrCol, BS,
-            d_x, &beta, d_Ax));
-
-        // r = Ax - e_j  （用 cuBLAS）
-        cublasHandle_t blas; CHECK_CUBLAS(cublasCreate(&blas));
-        CHECK_CUDA(cudaMemcpy(d_y, d_Ax, n*sizeof(double), cudaMemcpyDeviceToDevice));
-        const double minus1 = -1.0;
-        CHECK_CUBLAS(cublasDaxpy(blas, n, &minus1, d_e, 1, d_y, 1));
-
-        double nr = 0.0;
-        CHECK_CUBLAS(cublasDnrm2(blas, n, d_y, 1, &nr));
-        cublasDestroy(blas);
-
-        std::cout << "  j="<<j<<"  ||A*(M_U M_L e_j) - e_j||2 = " << nr << "\n";
-    }
-
-    cusparseDestroyMatDescr(descrA);
-    cusparseDestroy(spH);
-    cudaFree(d_e); cudaFree(d_y); cudaFree(d_x); cudaFree(d_Ax);
-}
-#else
-void debug_check_columns_AMML(
-    int n, int nb, int nnzb,
-    const int* d_bsrRow, const int* d_bsrCol, const float* d_bsrVal_Aorig, // 原始 A
-    const int* d_MbrowL, const int* d_McolL, const float* d_MvalL,
-    const int* d_MbrowU, const int* d_McolU, const float* d_MvalU)
-{
-    // 临时向量
-    float *d_e=nullptr, *d_y=nullptr, *d_x=nullptr, *d_Ax=nullptr;
-    CHECK_CUDA(cudaMalloc(&d_e,  n*sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_y,  n*sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_x,  n*sizeof(float)));
-    CHECK_CUDA(cudaMalloc(&d_Ax, n*sizeof(float)));
-
-    // SpMV 句柄
-    cusparseHandle_t spH; CHECK_CUSPARSE(cusparseCreate(&spH));
-    cusparseMatDescr_t descrA; CHECK_CUSPARSE(cusparseCreateMatDescr(&descrA));
-    CHECK_CUSPARSE(cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-    CHECK_CUSPARSE(cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
-    float alpha=1.0f, beta=0.0f;
-
-    std::cout << "\n[DBG] Column-by-column: ||A*(M_U M_L e_j) - e_j||_2\n";
-    for (int j=0; j<nb; ++j) {
-        CHECK_CUDA(cudaMemset(d_e, 0, n*sizeof(float)));
-        for (int t=0;t<BS;++t){
-            float one = 1.0f;
-            CHECK_CUDA(cudaMemcpy(d_e + j*BS + t, &one, sizeof(float), cudaMemcpyHostToDevice));
-        }
-
-        CHECK_CUDA(cudaMemset(d_y, 0, n*sizeof(float)));
-        CHECK_CUDA(cudaMemset(d_x, 0, n*sizeof(float)));
-
-        launch_bcsc_matvec_add_bsr5(nb, d_MbrowL, d_McolL, d_MvalL, d_e, d_y);
-        launch_bcsc_matvec_add_bsr5(nb, d_MbrowU, d_McolU, d_MvalU, d_y, d_x);
-
-        CHECK_CUDA(cudaMemset(d_Ax, 0, n*sizeof(float)));
-        CHECK_CUSPARSE(cusparseSbsrmv(
-            spH, CUSPARSE_DIRECTION_ROW, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            n, n, nnzb, &alpha, descrA,
-            d_bsrVal_Aorig, d_bsrRow, d_bsrCol, BS,
-            d_x, &beta, d_Ax));
-
-        cublasHandle_t blas; CHECK_CUBLAS(cublasCreate(&blas));
-        CHECK_CUDA(cudaMemcpy(d_y, d_Ax, n*sizeof(float), cudaMemcpyDeviceToDevice));
-        const float minus1 = -1.0f;
-        CHECK_CUBLAS(cublasSaxpy(blas, n, &minus1, d_e, 1, d_y, 1));
-
-        float nr = 0.0f;
-        CHECK_CUBLAS(cublasSnrm2(blas, n, d_y, 1, &nr));
-        cublasDestroy(blas);
-
-        std::cout << "  j="<<j<<"  ||A*(M_U M_L e_j) - e_j||2 = " << nr << "\n";
-    }
-
-    cusparseDestroyMatDescr(descrA);
-    cusparseDestroy(spH);
-    cudaFree(d_e); cudaFree(d_y); cudaFree(d_x); cudaFree(d_Ax);
-}
-#endif
-
 
 void inspect_bcsc_column_stats(const char* name,
                                int nb,

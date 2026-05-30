@@ -20,7 +20,7 @@ inline void dump_device_block_vector5(const char* name,
     std::vector<VALUE_TYPE> h_v(n);
     CHECK_CUDA(cudaMemcpy(h_v.data(), d_v, n * sizeof(VALUE_TYPE), cudaMemcpyDeviceToHost));
 
-    std::cout << "\n" << name << " (n=" << n << ", nb=" << nb << ", BS=5)\n";
+    std::cout << "\n" << name << " (n=" << n << ", nb=" << nb << ", BS=" << BS << ")\n";
     int nb_print = std::min(nb, max_blocks_to_print);
     for (int jb = 0; jb < nb_print; ++jb) {
         std::cout << "  block " << jb << " : ";
@@ -84,7 +84,9 @@ inline void bcsc_matvec_bsr5_cpu(int nb,
     const VALUE_TYPE* Bij = Mval + (start + tid) * BS2;
     const VALUE_TYPE* xj  = x + j * BS;
 
-    VALUE_TYPE acc[BS] = {0,0,0,0,0};
+    VALUE_TYPE acc[BS];
+    #pragma unroll
+    for (int r = 0; r < BS; ++r) acc[r] = 0.0;
     #pragma unroll
     for (int r = 0; r < BS; ++r) {
         VALUE_TYPE s = 0.0;
@@ -116,7 +118,9 @@ static __global__ void bcsc_matvec_onecol_noatomic(
     const VALUE_TYPE* Bij = Mval + (start + tid) * BS2;
     const VALUE_TYPE* xj  = x + j * BS;
 
-    VALUE_TYPE acc[BS] = {0,0,0,0,0};
+    VALUE_TYPE acc[BS];
+    #pragma unroll
+    for (int r = 0; r < BS; ++r) acc[r] = 0.0;
 
     #pragma unroll
     for (int r = 0; r < BS; ++r)

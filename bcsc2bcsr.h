@@ -71,10 +71,10 @@ __global__ void reorder_bcsc_val_to_bcsr_bs5(
     if (k >= nnzb) return;
 
     int dst = map_bcsc2bcsr[k];
-    const T* src = bcsc_val + k   * 25;
-    T*       out = bcsr_val + dst * 25;
+    const T* src = bcsc_val + k   * BS2;
+    T*       out = bcsr_val + dst * BS2;
 
-    for (int i = t; i < 25; i += blockDim.x) {
+    for (int i = t; i < BS2; i += blockDim.x) {
         out[i] = src[i];
     }
 }
